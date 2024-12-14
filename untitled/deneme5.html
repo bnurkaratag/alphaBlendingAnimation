@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alpha Blending</title>
+  <style>
+    /*genel sitil*/
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+
+    .container {
+      display: flex; /*icerikleri dikey olarak sıralayan bir flex konteyner*/
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    /*cizim alani*/
+    canvas {
+      border: 20px solid #ccc;
+      width: 500px;
+      height: 500px;
+    }
+
+    /* Resim onizleme alani */
+    .preview-container {
+      display: flex;
+      gap: 20px;
+    }
+
+    .preview-container img {
+      width: 100px;
+      height: auto;
+      border: 5px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Alpha Blending</h1>
+
+  <!-- dosya yukleme alanları -->
+  <label>
+    Resim 1 Seçin:
+    <input type="file" id="image1" accept="image/*" />
+  </label>
+  <label>
+    Resim 2 Seçin:
+    <input type="file" id="image2" accept="image/*" />
+  </label>
+
+  <!-- on izleme alanı -->
+  <div class="preview-container">
+    <img id="previewImage1" alt="Resim 1 Önizleme" />
+    <img id="previewImage2" alt="Resim 2 Önizleme" />
+  </div>
+
+  <!-- alpha degeri ayarlama slider -->
+  <div id="alphaControl">
+    <label>
+      Alpha Degeri: <span id="alphaValue">0.5</span>
+      <input type="range" id="alphaSlider" min="0" max="1" step="0.01" value="0.5" />
+    </label>
+  </div>
+
+  <!-- Canvas alani -->
+  <canvas id="canvas" width="500" height="500"></canvas>
+
+  <!-- alpha modlari ve butonlar -->
+  <div>
+    <button id="applyFixedAlpha">Sabit Alpha ile Harmanla</button>
+    <button id="applySpatialAlpha">Konumsal Alpha ile Harmanla</button>
+    <button id="applyTemporalAlpha">Zamansal Alpha ile Harmanla</button>
+  </div>
+</div>
+
+
+<script>
+  // html ogelerini degiskenlere atiyoruz
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const image1Input = document.getElementById('image1');
+  const image2Input = document.getElementById('image2');
+  const applyFixedAlphaButton = document.getElementById('applyFixedAlpha');
+  const applySpatialAlphaButton = document.getElementById('applySpatialAlpha');
+  const applyTemporalAlphaButton = document.getElementById('applyTemporalAlpha');
+  const alphaSlider = document.getElementById('alphaSlider');
+  const alphaValueText = document.getElementById('alphaValue');
+  const alphaControl = document.getElementById('alphaControl');
+  const previewImage1 = document.getElementById('previewImage1');
+  const previewImage2 = document.getElementById('previewImage2');
+
+  // resimler icin Image nesneleri
+  let image1 = new Image();
+  let image2 = new Image();
+  let imagesLoaded = 0;
+  let animationId;
+  let t = 0;
+
+  // kullanicinin yukledigi resmi Image nesnesine yukleme fonksiyonu ve on izleme guncellemesi
+  function loadImage(input, image, preview) {
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          image.src = event.target.result;
+          preview.src = event.target.result; // on izleme alanini guncelle
+          image.onload = checkImagesLoaded;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  // resimleri yuklemek icin loadImage fonksiyonunu cagiriyoruz
+  loadImage(image1Input, image1, previewImage1);
+  loadImage(image2Input, image2, previewImage2);
+
+  function checkImagesLoaded() {
+    imagesLoaded++;
+    if (imagesLoaded === 2) drawImages(parseFloat(alphaSlider.value));
+  }
+
+  function drawImages(alpha) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(image1, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(image2, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSpatialAlpha() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const imgData1 = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const imgData2 = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(image1, 0, 0, canvas.width, canvas.height);
+    const imageDataA = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(image2, 0, 0, canvas.width, canvas.height);
+    const imageDataB = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const dataA = imageDataA.data;
+    const dataB = imageDataB.data;
+
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const index = (y * canvas.width + x) * 4;
+        const dx = x - canvas.width / 2;
+        const dy = y - canvas.height / 2;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const maxDistance = Math.sqrt((canvas.width / 2) ** 2 + (canvas.height / 2) ** 2);
+        const alpha = 1 - distance / maxDistance;
+
+        imgData1.data[index] = dataA[index] * alpha + dataB[index] * (1 - alpha);
+        imgData1.data[index + 1] = dataA[index + 1] * alpha + dataB[index + 1] * (1 - alpha);
+        imgData1.data[index + 2] = dataA[index + 2] * alpha + dataB[index + 2] * (1 - alpha);
+        imgData1.data[index + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(imgData1, 0, 0);
+  }
+
+  function animateTemporalAlpha() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const alpha = 0.5 + 0.5 * Math.sin(t / 50);
+
+    ctx.globalAlpha = 1;
+    ctx.drawImage(image1, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(image2, 0, 0, canvas.width, canvas.height);
+
+    ctx.globalAlpha = 1;
+    t++;
+    animationId = requestAnimationFrame(animateTemporalAlpha);
+  }
+
+  alphaSlider.addEventListener('input', () => {
+    alphaValueText.textContent = alphaSlider.value;
+    drawImages(parseFloat(alphaSlider.value));
+  });
+
+  applyFixedAlphaButton.addEventListener('click', () => {
+    cancelAnimationFrame(animationId);
+    alphaControl.style.display = 'block';
+    drawImages(parseFloat(alphaSlider.value));
+  });
+
+  applySpatialAlphaButton.addEventListener('click', () => {
+    cancelAnimationFrame(animationId);
+    alphaControl.style.display = 'block';
+    drawSpatialAlpha();
+  });
+
+  applyTemporalAlphaButton.addEventListener('click', () => {
+    cancelAnimationFrame(animationId);
+    alphaControl.style.display = 'block';
+    t = 0;
+    animateTemporalAlpha();
+  });
+</script>
+
+</body>
+</html>
